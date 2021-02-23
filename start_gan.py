@@ -13,14 +13,15 @@
     # save the ouputs 
 
 
-from torch._C import device
 import torch.nn as nn
 import torch
+import torchvision
 from torch.utils import data 
 from torchvision import transforms
 from torchvision import datasets
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from torch.utils.tensorboard import SummaryWriter
 
 
 class Discremenator(nn.Module):
@@ -46,7 +47,7 @@ class Generator(nn.Module):
         self.FC2 = nn.Linear(512, 256)
         self.FC2 = nn.Linear(256, img_size)
         self.lek_relu = nn.LeakyReLU(0.2)
-        self.tanh = nn.tanh()
+        self.tanh = nn.Tanh()
     
     def forward(self, x):
         out = self.lek_relu(self.FC1(x))
@@ -81,14 +82,63 @@ dis_optimizer = torch.optim.Adam(params =discremenator.parameters(), lr = lr)
 criterion = nn.BCELoss()
 
 # There is no need to create a directory explicitily below checks if there else creates
-train_dataset = datasets.MNIST('data', train=True, transform=train_transforms)
+train_dataset = datasets.MNIST('data/MNIST',download = True ,train=True, transform=train_transforms)
 train_loader = DataLoader(dataset = train_dataset, batch_size=batch_size, shuffle=True)
+
+writer_fake = SummaryWriter(f"logs/fake")
+writer_real = SummaryWriter(f"logs/real")
+step = 0
+
 
 for epoch in range(num_epoch):
     for batch_idx, (data, _) in enumerate(train_loader):
-        data = data.to(device_)
         
-        gen = 
+        # Training the generator
+        data = data.to(device_)
+        fake_noise = torch.rand(batch_size, z_shape).to(device_)
+        gen = generator(fake_noise)
+        gen_optimizer.zero_grad()
+        valid = torch.ones(batch_size).to(device_) 
+        fake = torch.zeros(batch_size).to(device_)
+        gen_loss = criterion(discremenator(gen), valid)
+        gen_loss.backward()
+        gen_optimizer.step()
+
+        # Traininig the discremenator
+        dis_optimizer.zero_grad()
+        disc_real = discremenator(data)
+        disc_real_loss = criterion(disc_real, valid)
+        disc_gen = gen.detach()
+        disc_gen_loss = criterion(disc_gen, fake)
+        final_disc_loss = (disc_real_loss+disc_gen_loss)/2
+        final_disc_loss.backward()
+        dis_optimizer.step()
+
+
+        if batch_idx == 0:
+            print(
+                f"Epoch [{epoch}/{num_epoch}] Batch {batch_idx}/{len(train_loader)} \
+                      Loss D: {final_disc_loss:.4f}, loss G: {gen_loss:.4f}"
+            )
+
+            with torch.no_grad():
+                fake = gen.reshape(-1, 1, 28, 28)
+                datau = data.reshape(-1, 1, 28, 28)
+                img_grid_fake = torchvision.utils.make_grid(fake, normalize=True)
+                img_grid_real = torchvision.utils.make_grid(datau, normalize=True)
+
+                writer_fake.add_image(
+                    "Mnist Fake Images", img_grid_fake, global_step=step
+                )
+                writer_real.add_image(
+                    "Mnist Real Images", img_grid_real, global_step=step
+                )
+                step += 1
+
+
+
+
+        
  
 
 
