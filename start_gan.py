@@ -29,14 +29,27 @@ class Discremenator(nn.Module):
         super(Discremenator, self).__init__()
         self.FC1 = nn.Linear(img_size, 512)
         self.FC2 = nn.Linear(512, 256)
-        self.FC2 = nn.Linear(256, 128)
+        self.FC3 = nn.Linear(256, 128)
         self.lek_relu = nn.LeakyReLU(0.2)
+        self.FC4 = nn.Linear(128,1)
         self.sigmoid = nn.Sigmoid()
     
     def forward(self, x):
-        out = self.lek_relu(self.FC1(x))
-        out = self.lek_relu(self.FC2(out))
-        out = self.lek_relu(self.FC3(out))
+        # print(x.shape,"input")
+        out = self.FC1(x)
+        # print(out.shape,"FC1")
+        out = self.lek_relu(out)
+        # print(out.shape,"relu")
+        out = self.FC2(out)
+        # print(out.shape,"FC2")
+        out = self.lek_relu(out)
+        # print(out.shape,"relu")
+        out = self.FC3(out)
+        # print(out.shape,"FC3")
+        out = self.lek_relu(out)
+        # print(out.shape,"relu")
+        out = self.FC4(out)
+        # print(out.shape,"FC4")
         return self.sigmoid(out)
 
 
@@ -45,15 +58,28 @@ class Generator(nn.Module):
         super(Generator, self).__init__()
         self.FC1 = nn.Linear(z_shape, 512)
         self.FC2 = nn.Linear(512, 256)
-        self.FC2 = nn.Linear(256, img_size)
+        self.FC3 = nn.Linear(256, img_size)
         self.lek_relu = nn.LeakyReLU(0.2)
         self.tanh = nn.Tanh()
     
     def forward(self, x):
-        out = self.lek_relu(self.FC1(x))
-        out = self.lek_relu(self.FC2(out))
-        out = self.lek_relu(self.FC3(out))
-        return self.tanh(out)
+        # print(x.shape,"input")
+        out = self.FC1(x)
+        # print(out.shape,"FC1")
+        out = self.lek_relu(out)
+        # print(out.shape,"relu")
+        out = self.FC2(out)
+        # print(out.shape,"FC2")
+        out = self.lek_relu(out)
+        # print(out.shape,"relu")
+        out = self.FC3(out)
+        # print(out.shape,"FC3")
+        out = self.lek_relu(out)
+        # print(out.shape,"relu")
+        out = self.tanh(out)
+        # print(out.shape,"Tanh")
+        return  out.view(out.shape[0],1*28*28)
+
 
 
 train_transforms = transforms.Compose([
@@ -82,7 +108,7 @@ dis_optimizer = torch.optim.Adam(params =discremenator.parameters(), lr = lr)
 criterion = nn.BCELoss()
 
 # There is no need to create a directory explicitily below checks if there else creates
-train_dataset = datasets.MNIST('data/MNIST',download = True ,train=True, transform=train_transforms)
+train_dataset = datasets.MNIST('dataset',download = True ,train=True, transform=train_transforms)
 train_loader = DataLoader(dataset = train_dataset, batch_size=batch_size, shuffle=True)
 
 writer_fake = SummaryWriter(f"logs/fake")
@@ -93,22 +119,28 @@ step = 0
 for epoch in range(num_epoch):
     for batch_idx, (data, _) in enumerate(train_loader):
         
-        # Training the generator
-        data = data.to(device_)
+        # print("Training the generator")
+        data = data.view(-1,784).to(device_)
         fake_noise = torch.rand(batch_size, z_shape).to(device_)
         gen = generator(fake_noise)
         gen_optimizer.zero_grad()
-        valid = torch.ones(batch_size).to(device_) 
-        fake = torch.zeros(batch_size).to(device_)
-        gen_loss = criterion(discremenator(gen), valid)
+        valid = torch.ones(batch_size, 1).to(device_) 
+        fake = torch.zeros(batch_size, 1).to(device_)
+        disc_gen_opt = discremenator(gen)
+        # print(disc_gen_opt.shape, "Generateed discremenator shape")
+        # print(valid.shape, "Generateed VAlid shape")
+
+        gen_loss = criterion(disc_gen_opt, valid)
         gen_loss.backward()
         gen_optimizer.step()
 
         # Traininig the discremenator
+        # print("Traininig the discremenator")
         dis_optimizer.zero_grad()
-        disc_real = discremenator(data)
+        disc_real = discremenator(data).view(-1)
         disc_real_loss = criterion(disc_real, valid)
-        disc_gen = gen.detach()
+        disc_gen = disc_gen_opt.detach()
+        # print(disc_gen.shape,"Genrated shape")
         disc_gen_loss = criterion(disc_gen, fake)
         final_disc_loss = (disc_real_loss+disc_gen_loss)/2
         final_disc_loss.backward()
